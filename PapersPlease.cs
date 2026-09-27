@@ -10,7 +10,7 @@ using UnityEngine.AI;
 
 namespace Oxide.Plugins
 {
-    [Info("Cobalt Papers Please", "LowPopLabs", "1.4.0")]
+    [Info("Cobalt Papers Please", "LowPopLabs", "1.4.1")]
     [Description("Cobalt runs checkpoints and keeps a reputation on every player. Milestone 6: Outpost curfew (night safe-zone shrink, Suspects hostile at the wall gates) and the tier-5 Green Zone dressing.")]
     public class PapersPlease : RustPlugin
     {
@@ -343,7 +343,7 @@ namespace Oxide.Plugins
             [JsonProperty("VaultTurrets (sentries per vault from VaultTurretsFromTier)")] public int VaultTurrets = 2;
             [JsonProperty("Vaults (placed in-game with /papers vault add; positions are monument-local and transfer between maps)", ObjectCreationHandling = ObjectCreationHandling.Replace)] public List<VaultTemplate> Vaults = new List<VaultTemplate>();
             [JsonProperty("GuardsByTier (guards per vault, tiers 1..5)")] public int[] GuardsByTier = { 0, 0, 2, 2, 3 };
-            [JsonProperty("OpenBands (a legit Cobalt ID in the holder's own name opens the door for these bands only)", ObjectCreationHandling = ObjectCreationHandling.Replace)] public List<string> OpenBands = new List<string> { "Citizen" };
+            [JsonProperty("OpenBands (a legit Cobalt ID in the holder's own name opens the door for these bands only)", ObjectCreationHandling = ObjectCreationHandling.Replace)] public List<string> OpenBands = new List<string>(); // 1.4.1: empty — a vault is looted, never opened with papers (decision 0009 §2′)
             // Owner's call 2026-09-20: the vault's loot by tier — totals per vault, split evenly across
             // its crate spots, replacing the crate's own loot. An empty tier keeps the vanilla loot.
             [JsonProperty("LootByTier (what the vault holds at tiers 1..5: item short name -> amount, totals per vault split across its crates; empty = the crate's vanilla loot)", ObjectCreationHandling = ObjectCreationHandling.Replace)]
@@ -723,7 +723,7 @@ namespace Oxide.Plugins
                 ["Fence.ListNone"] = "No fences placed. Stand at Bandit Camp and run /papers fence add.",
                 ["Fence.ListLine"] = "{0} @ {1} ({2}) — {3}",
                 ["Fence.Teleported"] = "Teleported to fence '{0}'.",
-                ["Vault.Refused"] = "<color=#8fc1ff>Cobalt property.</color> Citizens carrying a Cobalt ID only.",
+                ["Vault.Refused"] = "<color=#8fc1ff>Cobalt property.</color> No entry.",
                 ["Vault.Usage"] = "/papers vault add <name> [monument] (aim at flat ground where the vault door should stand: the armored room is built behind it, away from you) · crate <name> · guard <name> (where you stand) · list · remove <name> · tp <name> · open|close|breach|restock <name> (admin)",
                 ["Vault.Added"] = "Vault '{0}' built at {1} (door local {2}, yaw {3:0}), {4:0} m from the monument origin. Crate and guard spots: /papers vault crate|guard {0}. {5}",
                 ["Vault.CrateAdded"] = "Crate spot {2} added to vault '{0}' at local {1}.",
@@ -4723,7 +4723,8 @@ namespace Oxide.Plugins
             var parent = baseLock.GetParentEntity();
             if (parent == null) return null;
             // Task 8.3 (decision 0009 §2): a vault door opens for a player whose band is in OpenBands
-            // and who carries a legit Cobalt ID in their own name. Everyone else — no papers, forged or
+            // and who carries a legit Cobalt ID in their own name. OpenBands is empty by default since
+            // 1.4.1 (§2′, owner 2026-09-27): a vault has to be breached; the band rule stays as an option. Everyone else — no papers, forged or
             // stolen papers, the wrong band, admins included — is refused with a line and no keypad;
             // admins open it with papers.vault open. A returned bool ends the engine's own check.
             var vault = VaultOfDoor(parent);

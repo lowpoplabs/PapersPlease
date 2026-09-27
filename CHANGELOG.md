@@ -5,6 +5,20 @@ All notable changes to Cobalt Papers Please are recorded here. Format follows
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-27
+
+### Changed
+- A vault can no longer be opened with papers: the door refuses everyone, Citizens with a
+  legit Cobalt ID included, and the only way in is a breach. `Vaults.OpenBands` now defaults to
+  empty (it was `["Citizen"]`); a server that wants the old rule can list bands there again. An
+  existing config keeps its value, so set `OpenBands` to `[]` by hand when upgrading. The refusal
+  line is now "Cobalt property. No entry." (update `Vault.Refused` in `oxide/lang/en` too, since
+  Oxide keeps an existing lang file's text).
+
+### Fixed
+- The flyer no longer says a Citizen may open a vault, or that Citizens are never searched
+  (they are searched from tier 4).
+
 ## [1.4.0] - 2026-09-27
 
 Decision 0011: Papers Please documents itself in the server's help menu and reaches out to two

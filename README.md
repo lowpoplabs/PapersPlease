@@ -103,9 +103,10 @@ the Cobalt ambush with its arrest. With the sibling plugins loaded it also docum
   by level (`Vaults.LootByTier`): by default scrap, high-quality metal, HV rockets, rockets and
   C4 — 2000 / 250 / 25 / 25 / 25 at level 3, 3000 / 500 / 50 / 50 / 50 at 4, 4000 / 1000 /
   100 / 100 / 100 at 5, split across the vault's crates.
-- The door opens for a **Citizen carrying a Cobalt ID in their own name** — nothing else, admins
-  included. Forged, stolen and revoked papers are refused. Looting the crates still costs
-  reputation and tags the loot `[COBALT]`.
+- The door opens for **nobody**, admins included, and no papers get you in: a vault has to be
+  breached. Looting the crates costs reputation and tags the loot `[COBALT]`. (A server can
+  list bands in `Vaults.OpenBands` to let a legit Cobalt ID in the holder's own name open the
+  door for them; the default is none.)
 - The door takes three C4 (1,000 hp). Breaching it costs −15, flags you hostile, puts the
   vault and the monument's gates on alert for 10 minutes, and goes out server-wide. Cobalt
   rebuilds the door after 20 minutes and restocks the crates an hour after the last one is
@@ -248,7 +249,7 @@ the Cobalt ambush with its arrest. With the sibling plugins loaded it also docum
   workbench forge route), the `Fence` section (the placed `Fences`, name, clothing, unarmed,
   serve Enemies, trigger radius, scrap per stack, invulnerable, respawn minutes, forged-ID
   price), the `Vaults` section (the placed `Vaults`, the level they appear from, guards by
-  level, which bands a legit ID opens the door for, breach penalty and alert, door rebuild and
+  level, which bands a legit ID opens the door for (none by default), breach penalty and alert, door rebuild and
   restock minutes, room or doorway mode), the `Sabotage` section (the level the switch appears
   from, the captured switch pose, the tool item, name and price, window minutes, what the
   window drops — safe zone, vanilla sentries, lights — the response squad's size, delay,
