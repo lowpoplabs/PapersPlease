@@ -1,0 +1,6 @@
+# Oxide compiles on the server; nothing to build locally
+releases/
+*.zip
+*.dll
+.DS_Store
+Thumbs.db
