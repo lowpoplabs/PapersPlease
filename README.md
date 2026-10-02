@@ -10,7 +10,7 @@ from safe zone to curfew to police state.
 **Status: v1.4.0, all nine milestones built and verified in-game.** History in [CHANGELOG.md](CHANGELOG.md).
 
 <!-- lpl:links -->
-**[Download v1.4.1](https://github.com/lowpoplabs/PapersPlease/releases/latest)** · **Flyer:** [web](https://lowpoplabs.github.io/flyers/PapersPlease.html) / [PDF](PapersPlease-Flyer.pdf) · **[Changelog](CHANGELOG.md)** · **[Ko-fi](https://ko-fi.com/lowpoplabs)**
+**[Download v1.4.2](https://github.com/lowpoplabs/PapersPlease/releases/latest)** · **Flyer:** [web](https://lowpoplabs.github.io/flyers/PapersPlease.html) / [PDF](PapersPlease-Flyer.pdf) · **[Changelog](CHANGELOG.md)** · **[Ko-fi](https://ko-fi.com/lowpoplabs)**
 <!-- /lpl:links -->
 
 ## What it does
