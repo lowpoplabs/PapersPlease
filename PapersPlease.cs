@@ -10,7 +10,7 @@ using UnityEngine.AI;
 
 namespace Oxide.Plugins
 {
-    [Info("Cobalt Papers Please", "LowPopLabs", "1.4.1")]
+    [Info("Cobalt Papers Please", "LowPopLabs", "1.4.2")]
     [Description("Cobalt runs checkpoints and keeps a reputation on every player. Milestone 6: Outpost curfew (night safe-zone shrink, Suspects hostile at the wall gates) and the tier-5 Green Zone dressing.")]
     public class PapersPlease : RustPlugin
     {
@@ -1668,12 +1668,50 @@ namespace Oxide.Plugins
             }
         }
 
-        // agentTypeID of the navmesh surface that answers at a given spot ('Animal' off-monument
-        // on the live server; the Humanoid bake exists only inside monuments). Probed per spawn
-        // because gates sit at monument edges where either may answer.
+        // ---- Navmesh shim (Facepunch's Livestock update, 2026-10-01) ----
+        // RustNav (Facepunch's own Recast mesh) is the default on this build and the Unity navmesh
+        // is no longer baked (-useOldNavmesh restores it), so every UnityEngine.AI.NavMesh.* static
+        // call answers nothing map-wide. RustNavMeshHelpers dispatches to whichever mesh the server
+        // booted with, so every static query goes through here. Agent-typed queries (the Animal and
+        // Humanoid bakes) are a Unity concept: RustNav is one untyped surface, so the typed overload
+        // drops the filter there. allowNpcDoors=false keeps closed doors solid.
+        private static bool UnityNavmesh => ConVar.AI.useUnityNavmesh;
+
+        private static bool NavSample(Vector3 pos, out NavMeshHit hit, float maxDistance)
+        {
+            return Rust.Ai.Gen2.RustNavMeshHelpers.SamplePosition(pos, out hit, maxDistance, Rust.Ai.Gen2.RustNavMeshHelpers.AllAreas, false);
+        }
+
+        private static bool NavSampleTyped(Vector3 pos, out NavMeshHit hit, float maxDistance, NavMeshQueryFilter filter)
+        {
+            if (UnityNavmesh) return NavMesh.SamplePosition(pos, out hit, maxDistance, filter);
+            return NavSample(pos, out hit, maxDistance);
+        }
+
+        // "unity" or "rustnav", with a note while RustNav is still building in the background.
+        private static string NavMeshName
+        {
+            get
+            {
+                if (UnityNavmesh) return "unity";
+                var nav = Rust.Ai.Gen2.Nav.RustNavigation.Instance;
+                return nav != null && nav.IsDefaultNavmeshBuilt() ? "rustnav" : "rustnav (not built)";
+            }
+        }
+
+        // agentTypeID of the Unity navmesh surface that answers at a given spot ('Animal' off-monument,
+        // the Humanoid bake inside monuments), probed per spawn because gates sit at monument edges
+        // where either may answer. Under RustNav there is no agent type (int.MinValue) and the surface
+        // name only says whether the one mesh answers there.
         public static int AgentTypeAt(Vector3 near, out string surfaceName)
         {
             surfaceName = "none";
+            if (!UnityNavmesh)
+            {
+                NavMeshHit rh;
+                if (NavSample(near, out rh, 6f)) surfaceName = "rustnav";
+                return int.MinValue;
+            }
             for (var i = 0; i < NavMesh.GetSettingsCount(); i++)
             {
                 var s = NavMesh.GetSettingsByIndex(i);
@@ -1722,25 +1760,35 @@ namespace Oxide.Plugins
                 ThinkMode = AIThinkMode.Interval;
                 thinkRate = 0.25f;
                 Navigator = GetComponent<BaseNavigator>();
+                // Since the Livestock update NPCPlayer.NavAgent is the prefab's RustNavMeshAgent, which
+                // binds itself to the Recast mesh when the navigator enables it. The raw Unity agent is
+                // driven only under -useOldNavmesh; enabled with no Unity mesh it only logs errors.
                 _agent = GetComponent<NavMeshAgent>();
-                if (_npc == null || Navigator == null || _agent == null) return;
-                _agent.enabled = false;
+                if (_npc == null || Navigator == null || _npc.NavAgent == null)
+                {
+                    GLog($"guard '{(_npc != null ? _npc.GuardName : "?")}' brain not initialised: navigator={(Navigator != null)}, nav agent={(_npc != null && _npc.NavAgent != null)}, unity agent={(_agent != null)}.");
+                    return;
+                }
+                if (_agent != null) _agent.enabled = false;
                 var typeId = AgentTypeAt(_npc.transform.position, out Surface);
-                if (typeId != int.MinValue && _npc.NavAgent != null)
+                if (typeId != int.MinValue)
                 {
                     _npc.NavAgent.agentTypeID = typeId;
                     _npc.NavAgent.areaMask = NavMesh.AllAreas;
                 }
-                _agent.speed = 5f;
-                _agent.acceleration = 8f;
-                _agent.angularSpeed = 120f;
+                if (_agent != null)
+                {
+                    _agent.speed = 5f;
+                    _agent.acceleration = 8f;
+                    _agent.angularSpeed = 120f;
+                    _agent.updatePosition = false;
+                    _agent.updateRotation = false;
+                }
                 Navigator.MaxWaterDepth = 0.5f;
-                _agent.updatePosition = false;
-                _agent.updateRotation = false;
                 NavMeshHit snap;
-                if (NavMesh.SamplePosition(_npc.transform.position, out snap, 6f, NavMesh.AllAreas))
+                if (NavSample(_npc.transform.position, out snap, 6f))
                     _npc.transform.position = snap.position;
-                _agent.enabled = true;
+                if (_agent != null && UnityNavmesh) _agent.enabled = true;
                 Navigator.SetNavMeshEnabled(true);
                 Navigator.PlaceOnNavMesh(0f);
                 _lastMoveTick = UnityEngine.Time.realtimeSinceStartup;
@@ -1837,7 +1885,7 @@ namespace Oxide.Plugins
                 {
                     _walkSkips++;
                     string surf; AgentTypeAt(target, out surf);
-                    GLog($"guard '{_npc.GuardName}' stalled {d:0} m short of point {_walkIndex} at {V(target)} (surface '{surf}', on navmesh={(_agent != null && _agent.isOnNavMesh)}); skipping ({_walkSkips} in a row).");
+                    GLog($"guard '{_npc.GuardName}' stalled {d:0} m short of point {_walkIndex} at {V(target)} (surface '{surf}', on navmesh={(_npc.NavAgent != null && _npc.NavAgent.isOnNavMesh)}); skipping ({_walkSkips} in a row).");
                     _walkIndex++; _walkBestDist = float.MaxValue; _walkLastProgressAt = now;
                     if (_walkSkips >= 3) { GLog($"guard '{_npc.GuardName}' walk abandoned after three skips, {WalkedMetres:0} m walked."); StopWalk("three skips"); }
                     return;
@@ -1854,7 +1902,7 @@ namespace Oxide.Plugins
                 {
                     _nextPathAt = now + 1f;
                     NavMeshHit hit;
-                    var dest = NavMesh.SamplePosition(target, out hit, 6f, NavMesh.AllAreas) ? hit.position : target;
+                    var dest = NavSample(target, out hit, 6f) ? hit.position : target;
                     Navigator.SetDestination(dest, BaseNavigator.NavigationSpeed.Normal, 0f, 0f);
                 }
             }
@@ -2094,9 +2142,10 @@ namespace Oxide.Plugins
                     if (now >= _nextPathAt)
                     {
                         _nextPathAt = now + 1f;
-                        // No navmesh on this build (probe 2026-09-20): a miss must still send the guard home.
+                        // A miss must still send the guard home (there was no mesh under the guards at all
+                        // on the September build).
                         NavMeshHit hit;
-                        var home = NavMesh.SamplePosition(_npc.PostPos, out hit, 6f, NavMesh.AllAreas) ? hit.position : _npc.PostPos;
+                        var home = NavSample(_npc.PostPos, out hit, 6f) ? hit.position : _npc.PostPos;
                         Navigator.SetDestination(home, BaseNavigator.NavigationSpeed.Normal, 0f, 0f);
                     }
                     return;
@@ -7872,12 +7921,12 @@ namespace Oxide.Plugins
             // guards' own NavMeshAgent carries (from the prefab), so that filter is asked first.
             NavMeshHit hit;
             var guardAgent = GuardAgentTypeId();
-            if (guardAgent != int.MinValue && NavMesh.SamplePosition(p, out hit, 6f, new NavMeshQueryFilter { agentTypeID = guardAgent, areaMask = NavMesh.AllAreas }))
+            if (guardAgent != int.MinValue && NavSampleTyped(p, out hit, 6f, new NavMeshQueryFilter { agentTypeID = guardAgent, areaMask = NavMesh.AllAreas }))
             {
                 surface = "guard-agent " + GuardAgentName(guardAgent);
                 return true;
             }
-            var plain = NavMesh.SamplePosition(p, out hit, 6f, NavMesh.AllAreas);
+            var plain = NavSample(p, out hit, 6f);
             var agent = AgentTypeAt(p, out surface);
             if (agent == int.MinValue) surface = plain ? "default" : "none";
             return plain || agent != int.MinValue;
@@ -8174,7 +8223,7 @@ namespace Oxide.Plugins
                         o = who.transform.position; label = who.displayName;
                     }
                     var guardAgent = GuardAgentTypeId();
-                    var sbn = new StringBuilder($"[probe] navprobe around {label} at {V(o)} (guards' agent type {(guardAgent == int.MinValue ? "unknown: no live guard" : GuardAgentName(guardAgent))}; registered settings {NavMesh.GetSettingsCount()}):");
+                    var sbn = new StringBuilder($"[probe] navprobe around {label} at {V(o)} (mesh {NavMeshName}; guards' agent type {(guardAgent == int.MinValue ? "unknown: no live guard" : GuardAgentName(guardAgent))}; registered Unity settings {NavMesh.GetSettingsCount()}):");
                     foreach (var radius in new[] { 0f, 20f, 40f, 80f, 120f, 200f })
                     {
                         var plainHits = 0; var agentHits = 0; var guardHits = 0; var surfaces = new HashSet<string>();
@@ -8183,9 +8232,9 @@ namespace Oxide.Plugins
                         {
                             var p = SnapToGround(o + Quaternion.Euler(0f, i * 45f, 0f) * Vector3.forward * radius);
                             NavMeshHit hit;
-                            if (NavMesh.SamplePosition(p, out hit, 6f, NavMesh.AllAreas)) plainHits++;
+                            if (NavSample(p, out hit, 6f)) plainHits++;
                             string surf; if (AgentTypeAt(p, out surf) != int.MinValue) { agentHits++; surfaces.Add(surf); }
-                            if (guardAgent != int.MinValue && NavMesh.SamplePosition(p, out hit, 6f, new NavMeshQueryFilter { agentTypeID = guardAgent, areaMask = NavMesh.AllAreas })) guardHits++;
+                            if (guardAgent != int.MinValue && NavSampleTyped(p, out hit, 6f, new NavMeshQueryFilter { agentTypeID = guardAgent, areaMask = NavMesh.AllAreas })) guardHits++;
                         }
                         sbn.Append($"\n  r={radius:0} m: guard-agent {guardHits}/{dirs}, plain {plainHits}/{dirs}, registered {agentHits}/{dirs}{(surfaces.Count > 0 ? " [" + string.Join(", ", surfaces) + "]" : "")}");
                     }

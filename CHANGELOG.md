@@ -5,6 +5,29 @@ All notable changes to Cobalt Papers Please are recorded here. Format follows
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-02
+
+Facepunch's Livestock update (2026-10-01) made its own Recast navmesh ("RustNav") the server
+default and stopped baking the Unity navmesh (`-useOldNavmesh` restores it). Verified live on
+the Oct 2 build before and after this release with a throwaway probe: the guards' engine-side
+navigator binds the prefab's RustNav agent by itself, so checkpoint guards, patrols and hunters
+kept walking on 1.4.1 (a 120 m road walk covered 88 m in 40 s), but every direct
+`UnityEngine.AI.NavMesh` query in the plugin answered nothing.
+
+### Fixed
+- Every navmesh query now goes through Facepunch's `RustNavMeshHelpers`, which dispatches to
+  whichever mesh the server booted with: the spawn snap, the walk and return-to-post
+  destinations, the agent-type probe and `papers.cp navprobe`. Agent-typed queries (the Animal
+  and Humanoid bakes) are a Unity-only concept and fall back to the untyped query under RustNav.
+- The raw Unity `NavMeshAgent` on a guard is enabled only under `-useOldNavmesh`; on the RustNav
+  default it stays off instead of logging "not on navmesh" errors for every guard.
+- A guard brain that cannot initialise (no navigator, no RustNav agent) now logs why instead of
+  standing silent.
+
+### Changed
+- Checkpoint and guard lines report the surface as `rustnav` (or `none`) on the new mesh; the
+  stall line reads the RustNav agent's on-mesh state; `papers.cp navprobe` names the live mesh.
+
 ## [1.4.1] - 2026-09-27
 
 ### Changed
