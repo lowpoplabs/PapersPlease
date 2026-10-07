@@ -10,7 +10,7 @@ using UnityEngine.AI;
 
 namespace Oxide.Plugins
 {
-    [Info("Cobalt Papers Please", "LowPopLabs", "1.4.2")]
+    [Info("Cobalt Papers Please", "LowPopLabs", "1.4.3")]
     [Description("Cobalt runs checkpoints and keeps a reputation on every player. Milestone 6: Outpost curfew (night safe-zone shrink, Suspects hostile at the wall gates) and the tier-5 Green Zone dressing.")]
     public class PapersPlease : RustPlugin
     {
@@ -77,7 +77,8 @@ namespace Oxide.Plugins
                 { "heli_crate", 1 },
                 { "bradley_crate", 1 },
                 { "supply_drop", 1 },
-                { "crate_normal_2", 3 }, // military crate: legal early game (decision 0003)
+                // Military, normal, wood and tool crates and barrels are never Cobalt property
+                // (decision 0003, amended 2026-10-07): a barrel-runner is not a criminal.
             };
 
             [JsonProperty("Contraband")]

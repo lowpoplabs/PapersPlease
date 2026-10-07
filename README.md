@@ -40,7 +40,8 @@ the Cobalt ambush with its arrest. With the sibling plugins loaded it also docum
 - What costs reputation: killing scientists (−5), looting Cobalt property crates (−3; the loot
   is tagged `[COBALT]` and will not stack with clean items), destroying someone else's base
   structures with explosives (−15 per base per 5 min), explosive damage that does not destroy (−5).
-- Military crates only count as Cobalt property from threat tier 3 (later in the wipe).
+- Cobalt property means elite crates, locked (hackable) crates, airdrops, and the heli and
+  Bradley crates. Military, normal, wood and tool crates and barrels are never Cobalt property.
 
 ## Checkpoints
 

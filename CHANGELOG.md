@@ -5,6 +5,15 @@ All notable changes to Cobalt Papers Please are recorded here. Format follows
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-10-07
+
+### Changed
+- The military crate (`crate_normal_2`) is no longer Cobalt property at any tier. Looting it
+  costs no standing and its contents are not tagged. Only elite crates, locked (hackable)
+  crates, airdrops and the heli and Bradley crates count (owner's call 2026-10-07; wood,
+  normal and tool crates and barrels were already free). Existing configs keep the old
+  default until the `crate_normal_2` line is removed from `CobaltCrates`.
+
 ## [1.4.2] - 2026-10-02
 
 Facepunch's Livestock update (2026-10-01) made its own Recast navmesh ("RustNav") the server
