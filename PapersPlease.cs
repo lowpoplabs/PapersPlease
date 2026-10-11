@@ -10,7 +10,7 @@ using UnityEngine.AI;
 
 namespace Oxide.Plugins
 {
-    [Info("Cobalt Papers Please", "LowPopLabs", "1.4.3")]
+    [Info("Cobalt Papers Please", "LowPopLabs", "1.4.4")]
     [Description("Cobalt runs checkpoints and keeps a reputation on every player. Milestone 6: Outpost curfew (night safe-zone shrink, Suspects hostile at the wall gates) and the tier-5 Green Zone dressing.")]
     public class PapersPlease : RustPlugin
     {
@@ -229,6 +229,12 @@ namespace Oxide.Plugins
             [JsonProperty("NudgeCobaltCrate")] public double NudgeCobaltCrate = 0.25;
             [JsonProperty("NudgeScientistKill")] public double NudgeScientistKill = 0.25;
             [JsonProperty("CheckIntervalSeconds (how often the tier is re-evaluated)")] public int CheckIntervalSeconds = 60;
+            // 1.4.4: the curve fits the wipe. ThreatCurve keeps the shape; the last anchor is moved to
+            // FinalTierDays before the next wipe and the others scale with it, so the last tier is
+            // the last week whatever the month's length. Off = the ThreatCurve hours as written.
+            [JsonProperty("CurveFitsWipe (true = stretch or squeeze ThreatCurve so the last tier begins FinalTierDays before the wipe ends; false = the ThreatCurve hours as written)")] public bool CurveFitsWipe = true;
+            [JsonProperty("FinalTierDays (with CurveFitsWipe, how many days before the wipe ends the last tier begins)")] public double FinalTierDays = 7;
+            [JsonProperty("WipeDays (length of the wipe in days; 0 = the next forced wipe, the first Thursday of the month at 19:00 UTC, at least 14 days after the save was created)")] public double WipeDays = 0;
         }
 
         public class CheckpointConfig
@@ -521,6 +527,7 @@ namespace Oxide.Plugins
             Dedupe(v.CurfewStart); Dedupe(v.CurfewEnd); Dedupe(v.Papers); Dedupe(v.Forgery); Dedupe(v.Fence); Dedupe(v.FenceForge); Dedupe(v.FenceTool);
             Dedupe(v.PatrolHalt); Dedupe(v.PatrolLost); Dedupe(v.AmbushRadio); Dedupe(v.AmbushStoodDown);
             RebuildContrabandSet();
+            _curve = null;
             SaveConfig();
         }
 
@@ -577,6 +584,7 @@ namespace Oxide.Plugins
                 ["Threat.Next"] = "Tier {0} in about {1:0.0} h.",
                 ["Threat.Max"] = "Cobalt is at full strength.",
                 ["Threat.Pinned"] = " [pinned by an admin]",
+                ["Threat.Curve"] = " Tiers 2-5 begin on {0}.",
                 ["Threat.Set"] = "Threat set to {0:0.0} (violence bonus now {1:+0.0;-0.0}); tier {2}.",
                 ["Threat.Pin"] = "Threat tier pinned at {0} until /threat tier off.",
                 ["Threat.Unpin"] = "Threat pin released; the clock reads tier {0}.",
@@ -816,7 +824,7 @@ namespace Oxide.Plugins
             _threatTimer = timer.Every(Mathf.Max(10, _config.Threat.CheckIntervalSeconds), () => _threat.Tick());
             _outpostTimer = timer.Every(Mathf.Max(10, _config.Outpost.CheckIntervalSeconds), () => OutpostTick(true));
             _patrolTimer = timer.Every(0.25f, PatrolTick); // the patrol spheres follow the lead at 4 Hz; a no-op with no patrol standing
-            Puts($"Cobalt Papers Please {Version} loaded: {_store.Count} reputation record(s), threat tier {CurrentTier()} ({HoursSinceWipe():0.0} h since wipe), {_checkpoints.Count} checkpoint(s) resolved, {LiveGuardCount()} guard(s) live.");
+            Puts($"Cobalt Papers Please {Version} loaded: {_store.Count} reputation record(s), threat tier {CurrentTier()} ({HoursSinceWipe():0.0} h since wipe; tiers 2-5 on {CurveSummary()}), {_checkpoints.Count} checkpoint(s) resolved, {LiveGuardCount()} guard(s) live.");
         }
 
         private void OnServerSave()
@@ -1097,14 +1105,15 @@ namespace Oxide.Plugins
 
         private static int TierFromValue(double value) => Mathf.Clamp(1 + (int)Math.Floor(value / 20.0), 1, 5);
 
-        // Piecewise-linear through (TierHours[i], 20*i); past the last anchor the last segment's
-        // slope continues to 100. With the defaults tier n still begins exactly at TierHours[n-1].
+        // Piecewise-linear through (anchor[i], 20*i); past the last anchor the last segment's
+        // slope continues to 100. With CurveFitsWipe the anchors are ThreatCurve scaled so the last
+        // one lands FinalTierDays before the wipe ends; tier n still begins exactly at anchor[n-1].
         private double BaseThreat(double hours)
         {
-            var anchors = _config.TierHours;
-            if (anchors == null || anchors.Length == 0) return 0;
+            var anchors = CurveAnchors();
+            if (anchors.Length == 0) return 0;
             if (hours <= anchors[0]) return 0;
-            for (var i = 1; i < anchors.Length && i < 5; i++)
+            for (var i = 1; i < anchors.Length; i++)
             {
                 if (hours <= anchors[i])
                 {
@@ -1112,9 +1121,70 @@ namespace Oxide.Plugins
                     return 20.0 * (i - 1) + 20.0 * (hours - anchors[i - 1]) / span;
                 }
             }
-            var last = Math.Min(anchors.Length, 5) - 1;
+            var last = anchors.Length - 1;
             var slope = last > 0 ? 20.0 / Math.Max(1, anchors[last] - anchors[last - 1]) : 20.0 / 48.0;
             return Math.Min(100.0, 20.0 * last + (hours - anchors[last]) * slope);
+        }
+
+        private const double MinAutoWipeDays = 14;
+        private double[] _curve;
+
+        // The anchors the clock runs on, in hours: ThreatCurve as written, or (CurveFitsWipe) every
+        // anchor multiplied so the last one sits FinalTierDays before the wipe ends. Cached until
+        // the next config load; the wipe length only changes with the save.
+        private double[] CurveAnchors()
+        {
+            if (_curve != null) return _curve;
+            var raw = _config.TierHours;
+            if (raw == null || raw.Length == 0) raw = new[] { 0, 48, 120, 240, 400 };
+            var n = Math.Min(raw.Length, 5);
+            var factor = 1.0;
+            if (_config.Threat.CurveFitsWipe)
+            {
+                var wipe = WipeLengthHours();
+                var target = wipe - Math.Max(0, _config.Threat.FinalTierDays) * 24.0;
+                if (wipe > 0 && raw[n - 1] > 0 && target > 0) factor = target / raw[n - 1];
+            }
+            _curve = new double[n];
+            for (var i = 0; i < n; i++) _curve[i] = raw[i] * factor;
+            return _curve;
+        }
+
+        // Hours from the save's creation to the end of the wipe: WipeDays if set, else the next
+        // forced wipe (the first Thursday of the month, 19:00 UTC), skipping one that would make
+        // the wipe shorter than MinAutoWipeDays (a save made the day before a forced wipe).
+        private double WipeLengthHours()
+        {
+            if (_config.Threat.WipeDays > 0) return _config.Threat.WipeDays * 24.0;
+            var created = SaveRestore.SaveCreatedTime;
+            if (created == default(DateTime)) return 0;
+            created = created.ToUniversalTime();
+            var next = NextForcedWipe(created);
+            if ((next - created).TotalDays < MinAutoWipeDays) next = NextForcedWipe(next);
+            return (next - created).TotalHours;
+        }
+
+        private static DateTime NextForcedWipe(DateTime afterUtc)
+        {
+            var month = new DateTime(afterUtc.Year, afterUtc.Month, 1, 19, 0, 0, DateTimeKind.Utc);
+            for (var i = 0; i < 3; i++)
+            {
+                var first = month;
+                while (first.DayOfWeek != DayOfWeek.Thursday) first = first.AddDays(1);
+                if (first > afterUtc) return first;
+                month = month.AddMonths(1);
+            }
+            return month;
+        }
+
+        // "day 3.4, 8.4, 16.8, 28 of a 34-day wipe" for /threat and the load line.
+        private string CurveSummary()
+        {
+            var a = CurveAnchors();
+            var days = new List<string>();
+            for (var i = 1; i < a.Length; i++) days.Add((a[i] / 24.0).ToString("0.#"));
+            var wipe = WipeLengthHours();
+            return wipe > 0 ? $"days {string.Join(" / ", days)} of a {wipe / 24.0:0.#}-day wipe" : $"days {string.Join(" / ", days)}";
         }
 
         private class ThreatData
@@ -1239,6 +1309,7 @@ namespace Oxide.Plugins
                 next = h >= 0 ? L("Threat.Next", viewerId, tier + 1, h) : L("Threat.Max", viewerId);
             }
             return L("Threat.Status", viewerId, tier, _threat.Value, _threat.Hours, _threat.Base, _threat.Nudge, pinned, next)
+                + L("Threat.Curve", viewerId, CurveSummary())
                 + (_curfewOn ? L("Threat.Curfew", viewerId) : "");
         }
 

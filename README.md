@@ -162,7 +162,8 @@ the Cobalt ambush with its arrest. With the sibling plugins loaded it also docum
 ## Threat level
 
 - `/threat` shows Cobalt's threat level 1–5 and the 0–100 value behind it: a wipe-age base
-  (tier 2 at 48 h, 3 at 120 h, 4 at 240 h, 5 at 400 h by default) plus a violence bonus that
+  (the `ThreatCurve` anchors 48 / 120 / 240 / 400 h, stretched by default so tier 5 begins a
+  week before the next forced wipe; `/threat` prints the days) plus a violence bonus that
   rises with guard kills, checkpoint runs, raids, evasions and Cobalt looting and drains by half
   a point per hour of quiet (capped at 15, so violence hurries the next level but never skips one).
 - Every level change is announced server-wide. Levels change the gates: which monuments are

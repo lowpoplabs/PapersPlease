@@ -5,6 +5,17 @@ All notable changes to Cobalt Papers Please are recorded here. Format follows
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-10-11
+
+### Changed
+- The threat curve fits the wipe. By default (`Threat.CurveFitsWipe`) the `ThreatCurve`
+  anchors keep their shape but are stretched so tier 5 begins `FinalTierDays` (7) before the
+  next forced wipe — the first Thursday of the month at 19:00 UTC, computed from the save's
+  creation time (`WipeDays` overrides the length). On a 35-day wipe tiers 2–5 begin on days
+  3.4 / 8.4 / 16.8 / 28 instead of 2 / 5 / 10 / 17. Violence still pulls the next tier closer.
+  Turn `CurveFitsWipe` off for the old fixed hours.
+- `/threat` and the load line print the days on which tiers 2–5 begin and the wipe length.
+
 ## [1.4.3] - 2026-10-07
 
 ### Changed
