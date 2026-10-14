@@ -10,7 +10,7 @@ using UnityEngine.AI;
 
 namespace Oxide.Plugins
 {
-    [Info("Cobalt Papers Please", "LowPopLabs", "1.4.4")]
+    [Info("Cobalt Papers Please", "LowPopLabs", "1.4.5")]
     [Description("Cobalt runs checkpoints and keeps a reputation on every player. Milestone 6: Outpost curfew (night safe-zone shrink, Suspects hostile at the wall gates) and the tier-5 Green Zone dressing.")]
     public class PapersPlease : RustPlugin
     {
@@ -804,6 +804,7 @@ namespace Oxide.Plugins
             permission.RegisterPermission(PermAdmin, this);
             permission.RegisterPermission(PermExempt, this);
             Unsubscribe(nameof(OnEntityTakeDamage)); // armed only after explosives are used (decision 0003 §4)
+            Unsubscribe(nameof(OnCustomNpcTarget)); // armed only while a Cobalt guard stands (1.4.5)
         }
 
         private void OnServerInitialized()
@@ -1714,6 +1715,19 @@ namespace Oxide.Plugins
             public Checkpoint Checkpoint;
             public bool Passive;             // the fence: posts, faces, never engages (Milestone 7)
 
+            // Guards standing right now, every kind (gate, roadblock, vault, patrol, fence, squad):
+            // counted up in SpawnGuard, down here, so the NpcSpawn veto hook is subscribed only while
+            // one exists (1.4.5). A guard torn down without Kill() leaves a stray count, which only
+            // keeps the hook on — one type test per NpcSpawn scan — never off while a guard stands.
+            public static int Live;
+
+            public override void DestroyShared()
+            {
+                base.DestroyShared();
+                if (Live > 0) Live--;
+                _instance?.RefreshNpcTargetHook();
+            }
+
             // ScientistNPC computes displayName per read; a field never sticks.
             public override string displayName =>
                 string.IsNullOrEmpty(GuardName) ? base.displayName : GuardName;
@@ -2445,6 +2459,8 @@ namespace Oxide.Plugins
             npc.startHealth = hp;              // HumanNPC.MaxHealth() returns this field
             npc.gameObject.AwakeFromInstantiate();
             npc.Spawn();
+            GuardNpc.Live++;
+            RefreshNpcTargetHook();
             npc.InitializeHealth(hp, hp);
             // With `loadouts` copied the prefab kit equips itself; arm explicitly only if it did not.
             if (npc.inventory?.containerBelt != null && npc.inventory.containerBelt.itemList.Count == 0)
@@ -2470,6 +2486,33 @@ namespace Oxide.Plugins
             npc.SetAimDirection(facing);
             if (owner == null && !passive) _looseGuards.Add(npc); // a fence is tracked by its Fence, not as a loose guard
             return npc;
+        }
+
+        // KpucTaJl's NpcSpawn (the brain behind BetterNpc and the rest of that family) never asks
+        // Oxide's OnNpcTarget: its CustomScientistNpc hides GetBestTarget with its own scan over
+        // Brain.Senses.Memory.All and runs every candidate through CanTargetEntity, which calls
+        // OnCustomNpcTarget(CustomScientistNpc npc, BaseCombatEntity target) first and honours ONLY
+        // a bool answer — false = never a target, true = always, anything else = its own rules.
+        // Our guards carry the stock non-Steam userID, so those rules sort them into its "NPC"
+        // bucket, where a preset with NPC attack mode on hunts them like any scientist. Cobalt's
+        // people are nobody's prey: answer false for every GuardNpc (verified against NpcSpawn
+        // 3.4.8, 2026-10-13). Parameters are declared as base types so this compiles with or
+        // without NpcSpawn; subscribed only while a guard stands (RefreshNpcTargetHook).
+        private object OnCustomNpcTarget(BaseEntity npc, BaseEntity target)
+        {
+            if ((object)target == null) return null;
+            if (target is GuardNpc) return false;
+            return null;
+        }
+
+        private bool _npcTargetHooked;
+
+        private void RefreshNpcTargetHook()
+        {
+            var want = GuardNpc.Live > 0;
+            if (want == _npcTargetHooked) return;
+            _npcTargetHooked = want;
+            if (want) Subscribe(nameof(OnCustomNpcTarget)); else Unsubscribe(nameof(OnCustomNpcTarget));
         }
 
         private static void DespawnGuard(GuardNpc g)

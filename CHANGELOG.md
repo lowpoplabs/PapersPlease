@@ -5,6 +5,17 @@ All notable changes to Cobalt Papers Please are recorded here. Format follows
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-10-13
+
+### Fixed
+- NPCs driven by KpucTaJl's NpcSpawn (BetterNpc and the rest of that family) never pick a
+  Cobalt guard as a target. NpcSpawn bypasses Oxide's `OnNpcTarget` with its own scan and asks
+  its own veto hook, `OnCustomNpcTarget`, instead; the plugin now answers `false` for every
+  guard, hunter, patrol and fence NPC (verified against NpcSpawn 3.4.8: only a boolean answer
+  counts, `false` = never a target). Declared on base types, so the plugin compiles with or
+  without NpcSpawn installed; subscribed only while a Cobalt guard stands. No config, lang or
+  data-file changes.
+
 ## [1.4.4] - 2026-10-11
 
 ### Changed

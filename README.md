@@ -284,6 +284,8 @@ listens for to award standing. HelpMenu reads the `GetHelpInfo` hook for the hel
 
 - Built and tested on the September 2026 Rust update (build 2633.288) on Oxide. Optional
   integrations: HelpMenu, PublicWorks 2.9.0+, Island Taxi 1.6.0+. Nothing is required.
+- NPCs spawned by NpcSpawn-based plugins (BetterNpc and family) never target Cobalt guards:
+  the plugin answers NpcSpawn's own `OnCustomNpcTarget` veto (1.4.5).
 
 ## Support
 
